@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
+import { api } from "@/lib/api";
 
 function PhoneVerificationInner() {
   const router = useRouter();
@@ -11,13 +12,28 @@ function PhoneVerificationInner() {
   const [code, setCode] = useState("");
   const [loading, setLoading] = useState(false);
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!phone.trim()) {
+      alert("Номер телефона не найден");
+      return;
+    }
+    if (!code.trim()) {
+      alert("Введите код");
+      return;
+    }
+
     setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
+    try {
+      const { accessToken } = await api.verifyOtp(phone.trim(), code.trim());
+      localStorage.setItem("access_token", accessToken);
       router.push("/home");
-    }, 500);
+    } catch (err) {
+      const msg = err instanceof Error && err.message ? err.message : "Код неверный или истек";
+      alert(msg);
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (

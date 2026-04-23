@@ -24,6 +24,7 @@ export interface Field {
   lat: number | null;
   lng: number | null;
   pricePerHour: number;
+  slotDuration: number;
   rating: number;
   amenities: Record<string, boolean>;
   photos: string[];
@@ -31,6 +32,7 @@ export interface Field {
   pitchType: string | null;
   dimensions: string | null;
   workTime: string | null;
+  mapUrl: string | null;
   createdAt: string;
 }
 
@@ -46,6 +48,7 @@ export interface CreateFieldDto {
   pitchType?: string;
   dimensions?: string;
   workTime?: string;
+  mapUrl?: string;
 }
 
 export type LobbyStatus =

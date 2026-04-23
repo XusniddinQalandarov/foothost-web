@@ -1,6 +1,8 @@
 import type { User, Field, Lobby, News, CreateNewsDto, CreateFieldDto } from './types';
 
-const BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000';
+const BASE =
+  process.env.NEXT_PUBLIC_API_URL ??
+  'https://still-mountain-91803-673a3b81f512.herokuapp.com';
 
 function getToken(): string | null {
   if (typeof window === 'undefined') return null;
@@ -32,6 +34,29 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 }
 
 export const api = {
+  register: (dto: {
+    firstName: string;
+    lastName: string;
+    phone: string;
+    password: string;
+  }) =>
+    request<{
+      userId: string;
+      message: string;
+      requiresOtp: boolean;
+      accessToken?: string;
+      refreshToken?: string;
+    }>('/auth/register', {
+      method: 'POST',
+      body: JSON.stringify(dto),
+    }),
+
+  verifyOtp: (phone: string, code: string) =>
+    request<{ accessToken: string; refreshToken: string }>('/auth/verify-otp', {
+      method: 'POST',
+      body: JSON.stringify({ phone, code }),
+    }),
+
   login: (phone: string, password: string) =>
     request<{ accessToken: string; refreshToken: string }>('/auth/login', {
       method: 'POST',
@@ -51,6 +76,13 @@ export const api = {
         method: 'POST',
         body: JSON.stringify(dto),
       }),
+    update: (id: string, dto: Partial<CreateFieldDto>) =>
+      request<Field>(`/fields/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(dto),
+      }),
+    remove: (id: string) =>
+      request<void>(`/fields/${id}`, { method: 'DELETE' }),
     uploadPhoto: async (id: string, file: File): Promise<Field> => {
       const token = getToken();
       const form = new FormData();

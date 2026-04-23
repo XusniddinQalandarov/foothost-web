@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { api } from "@/lib/api";
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -16,7 +17,7 @@ export default function RegisterPage() {
   const [agree, setAgree] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!form.firstName || !form.lastName || !form.phoneNumber || !form.password) {
       alert("Заполните все поля");
@@ -27,10 +28,27 @@ export default function RegisterPage() {
       return;
     }
     setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
+    try {
+      const result = await api.register({
+        firstName: form.firstName.trim(),
+        lastName: form.lastName.trim(),
+        phone: form.phoneNumber.trim(),
+        password: form.password,
+      });
+
+      if (!result.requiresOtp && result.accessToken) {
+        localStorage.setItem("access_token", result.accessToken);
+        router.push("/home");
+        return;
+      }
+
       router.push(`/phone-verification?phone=${encodeURIComponent(form.phoneNumber)}`);
-    }, 600);
+    } catch (err) {
+      const msg = err instanceof Error && err.message ? err.message : "Не удалось зарегистрироваться";
+      alert(msg);
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (

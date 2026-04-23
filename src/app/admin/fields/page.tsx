@@ -3,19 +3,20 @@
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import type { CreateFieldDto, Field } from "@/lib/types";
-import { Plus, Star, X } from "lucide-react";
+import { Clock, MapPin, Pencil, Plus, Star, Trash2, X } from "lucide-react";
 
-const EMPTY_FIELD: CreateFieldDto = {
+type FieldFormState = Omit<CreateFieldDto, "pricePerHour"> & { pricePerHour?: number };
+
+const EMPTY_FIELD: FieldFormState = {
   name: "",
   address: "",
-  lat: 0,
-  lng: 0,
-  pricePerHour: 0,
+  pricePerHour: undefined,
   slotDuration: 60,
   description: "",
-  pitchType: "",
+  pitchType: "Открытая",
   dimensions: "",
-  workTime: "",
+  workTime: "08:00 - 23:00",
+  mapUrl: "",
   amenities: {
     parking: false,
     locker: false,
@@ -30,9 +31,20 @@ export default function AdminFieldsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [creating, setCreating] = useState(false);
-  const [form, setForm] = useState<CreateFieldDto>(EMPTY_FIELD);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [form, setForm] = useState<FieldFormState>(EMPTY_FIELD);
   const [files, setFiles] = useState<File[]>([]);
+  const [filePreviews, setFilePreviews] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
+  const [openTime, setOpenTime] = useState("08:00");
+  const [closeTime, setCloseTime] = useState("23:00");
+
+  const TIME_OPTIONS = [
+    "06:00", "07:00", "08:00", "09:00", "10:00", "11:00",
+    "12:00", "13:00", "14:00", "15:00", "16:00", "17:00",
+    "18:00", "19:00", "20:00", "21:00", "22:00", "23:00",
+    "00:00", "01:00", "02:00", "03:00",
+  ];
 
   async function load() {
     setLoading(true);
@@ -50,43 +62,97 @@ export default function AdminFieldsPage() {
     load();
   }, []);
 
+  useEffect(() => {
+    return () => {
+      filePreviews.forEach((url) => URL.revokeObjectURL(url));
+    };
+  }, [filePreviews]);
+
   async function createField() {
-    if (!form.name.trim() || !form.address.trim() || form.pricePerHour <= 0) {
+    if (!form.name.trim() || !form.address.trim() || !form.pricePerHour || form.pricePerHour <= 0) {
       setError("Заполните название, адрес и цену больше 0");
+      return;
+    }
+    if (form.mapUrl && !/google\.[^/]+\/maps|maps\.yandex|yandex\.[^/]+\/maps/i.test(form.mapUrl)) {
+      setError("Ссылка на карту должна быть из Google Maps или Yandex Maps");
       return;
     }
 
     setSaving(true);
     setError("");
-    api.fields
-      .create({
-        ...form,
-        name: form.name.trim(),
-        address: form.address.trim(),
-        lat: form.lat || undefined,
-        lng: form.lng || undefined,
-        description: form.description?.trim() || undefined,
-        pitchType: form.pitchType?.trim() || undefined,
-        dimensions: form.dimensions?.trim() || undefined,
-        workTime: form.workTime?.trim() || undefined,
-      })
-      .then(async (created) => {
-        for (const file of files) {
-          await api.fields.uploadPhoto(created.id, file);
+    const payload: CreateFieldDto = {
+      ...form,
+      pricePerHour: form.pricePerHour as number,
+      name: form.name.trim(),
+      address: form.address.trim(),
+      description: form.description?.trim() || undefined,
+      pitchType: form.pitchType?.trim() || undefined,
+      dimensions: form.dimensions?.trim() || undefined,
+      workTime: `${openTime} - ${closeTime}`,
+      mapUrl: form.mapUrl?.trim() || undefined,
+    };
+    const request = editingId
+      ? api.fields.update(editingId, payload)
+      : api.fields.create(payload);
+
+    request
+      .then(async (result) => {
+        if (files.length > 0) {
+          for (const file of files) {
+            await api.fields.uploadPhoto(result.id, file);
+          }
         }
         setCreating(false);
+        setEditingId(null);
         setForm(EMPTY_FIELD);
+        setOpenTime("08:00");
+        setCloseTime("23:00");
         setFiles([]);
+        filePreviews.forEach((url) => URL.revokeObjectURL(url));
+        setFilePreviews([]);
         await load();
       })
       .catch((e: unknown) =>
         setError(
           e instanceof Error
             ? e.message
-            : "Не удалось добавить стадион. Проверьте права field_owner/admin.",
+            : "Не удалось сохранить стадион. Проверьте права field_owner/admin.",
         ),
       )
       .finally(() => setSaving(false));
+  }
+
+  function startEdit(field: Field) {
+    const parsed = (field.workTime ?? "").split("-").map((v) => v.trim());
+    setEditingId(field.id);
+    setForm({
+      name: field.name,
+      address: field.address,
+      pricePerHour: field.pricePerHour,
+      slotDuration: field.slotDuration,
+      description: field.description ?? "",
+      pitchType: field.pitchType ?? "Открытая",
+      dimensions: field.dimensions ?? "",
+      workTime: field.workTime ?? "",
+      mapUrl: field.mapUrl ?? "",
+      amenities: field.amenities ?? {},
+    });
+    setOpenTime(parsed[0] || "08:00");
+    setCloseTime(parsed[1] || "23:00");
+    setFiles([]);
+    setCreating(true);
+    setError("");
+  }
+
+  async function removeField(id: string) {
+    if (!confirm("Удалить стадион?")) return;
+    setError("");
+    try {
+      await api.fields.remove(id);
+      await load();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Не удалось удалить стадион");
+    }
   }
 
   return (
@@ -96,6 +162,7 @@ export default function AdminFieldsPage() {
         <button
           onClick={() => {
             setCreating((prev) => !prev);
+            if (creating) setEditingId(null);
             setError("");
           }}
           className="flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-[#3d9c2b]"
@@ -109,100 +176,126 @@ export default function AdminFieldsPage() {
 
       {creating && (
         <div className="mb-6 rounded-2xl border bg-white p-6 shadow-sm">
-          <h2 className="mb-4 text-lg font-semibold">Новый стадион</h2>
+          <h2 className="mb-4 text-lg font-semibold">
+            {editingId ? "Редактировать стадион" : "Новый стадион"}
+          </h2>
           <div className="grid gap-3 md:grid-cols-2">
+            <label className="text-sm">
+              <span className="mb-1 block text-gray-600">Название</span>
+              <input
+                className="w-full rounded-xl border px-4 py-2.5 text-sm outline-none focus:border-primary"
+                placeholder="Например: BUNYODKOR"
+                value={form.name}
+                onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
+              />
+            </label>
+            <label className="text-sm">
+              <span className="mb-1 flex items-center gap-1 text-gray-600">
+                <MapPin size={14} /> Адрес
+              </span>
+              <input
+                className="w-full rounded-xl border px-4 py-2.5 text-sm outline-none focus:border-primary"
+                placeholder="Например: Малая кольцевая дорога"
+                value={form.address}
+                onChange={(e) => setForm((prev) => ({ ...prev, address: e.target.value }))}
+              />
+            </label>
+            <label className="text-sm md:col-span-2">
+              <span className="mb-1 flex items-center gap-1 text-gray-600">
+                <MapPin size={14} /> Ссылка на карту (Google/Yandex)
+              </span>
+              <input
+                className="w-full rounded-xl border px-4 py-2.5 text-sm outline-none focus:border-primary"
+                placeholder="https://maps.google.com/... или https://yandex.uz/maps/..."
+                value={form.mapUrl ?? ""}
+                onChange={(e) => setForm((prev) => ({ ...prev, mapUrl: e.target.value }))}
+              />
+            </label>
+            <label className="text-sm">
+              <span className="mb-1 flex items-center gap-1 text-gray-600">
+                <Star size={14} /> Цена за час (сум)
+              </span>
+              <input
+                type="number"
+                min={0}
+                className="w-full rounded-xl border px-4 py-2.5 text-sm outline-none focus:border-primary"
+                placeholder="Например: 200000"
+                value={form.pricePerHour ?? ""}
+                onChange={(e) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    pricePerHour: e.target.value === "" ? undefined : Number(e.target.value),
+                  }))
+                }
+              />
+            </label>
+            <label className="text-sm">
+              <span className="mb-1 flex items-center gap-1 text-gray-600">
+                <Clock size={14} /> Длительность слота
+              </span>
+              <select
+                className="w-full rounded-xl border px-4 py-2.5 text-sm outline-none focus:border-primary"
+                value={form.slotDuration}
+                onChange={(e) =>
+                  setForm((prev) => ({ ...prev, slotDuration: Number(e.target.value) }))
+                }
+              >
+                <option value={60}>Слот 60 минут</option>
+                <option value={30}>Слот 30 минут</option>
+              </select>
+            </label>
             <input
               className="rounded-xl border px-4 py-2.5 text-sm outline-none focus:border-primary"
-              placeholder="Название"
-              value={form.name}
-              onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
-            />
-            <input
-              className="rounded-xl border px-4 py-2.5 text-sm outline-none focus:border-primary"
-              placeholder="Адрес"
-              value={form.address}
-              onChange={(e) => setForm((prev) => ({ ...prev, address: e.target.value }))}
-            />
-            <input
-              type="number"
-              step="0.000001"
-              className="rounded-xl border px-4 py-2.5 text-sm outline-none focus:border-primary"
-              placeholder="Широта (lat)"
-              value={form.lat ?? 0}
-              onChange={(e) =>
-                setForm((prev) => ({
-                  ...prev,
-                  lat: Number(e.target.value || 0),
-                }))
-              }
-            />
-            <input
-              type="number"
-              step="0.000001"
-              className="rounded-xl border px-4 py-2.5 text-sm outline-none focus:border-primary"
-              placeholder="Долгота (lng)"
-              value={form.lng ?? 0}
-              onChange={(e) =>
-                setForm((prev) => ({
-                  ...prev,
-                  lng: Number(e.target.value || 0),
-                }))
-              }
-            />
-            <input
-              type="number"
-              min={0}
-              className="rounded-xl border px-4 py-2.5 text-sm outline-none focus:border-primary"
-              placeholder="Цена за час"
-              value={form.pricePerHour}
-              onChange={(e) =>
-                setForm((prev) => ({
-                  ...prev,
-                  pricePerHour: Number(e.target.value || 0),
-                }))
-              }
-            />
-            <select
-              className="rounded-xl border px-4 py-2.5 text-sm outline-none focus:border-primary"
-              value={form.slotDuration}
-              onChange={(e) =>
-                setForm((prev) => ({ ...prev, slotDuration: Number(e.target.value) }))
-              }
-            >
-              <option value={60}>Слот 60 минут</option>
-              <option value={30}>Слот 30 минут</option>
-            </select>
-            <input
-              className="rounded-xl border px-4 py-2.5 text-sm outline-none focus:border-primary"
-              placeholder="Тип площадки (например: Открытая)"
-              value={form.pitchType ?? ""}
-              onChange={(e) => setForm((prev) => ({ ...prev, pitchType: e.target.value }))}
-            />
-            <input
-              className="rounded-xl border px-4 py-2.5 text-sm outline-none focus:border-primary"
-              placeholder="Размер (например: 20x40)"
+              placeholder="Размер поля (например: 20x40)"
               value={form.dimensions ?? ""}
               onChange={(e) => setForm((prev) => ({ ...prev, dimensions: e.target.value }))}
             />
-            <input
-              className="rounded-xl border px-4 py-2.5 text-sm outline-none focus:border-primary md:col-span-2"
-              placeholder="Время работы (например: 08:00 - 03:00)"
-              value={form.workTime ?? ""}
-              onChange={(e) => setForm((prev) => ({ ...prev, workTime: e.target.value }))}
-            />
+            <select
+              className="rounded-xl border px-4 py-2.5 text-sm outline-none focus:border-primary"
+              value={form.pitchType ?? ""}
+              onChange={(e) => setForm((prev) => ({ ...prev, pitchType: e.target.value }))}
+            >
+              <option value="Открытая">Открытая</option>
+              <option value="Закрытая">Закрытая</option>
+            </select>
+            <label className="text-sm">
+              <span className="mb-1 block text-gray-600">Открытие</span>
+              <select
+                className="w-full rounded-xl border px-4 py-2.5 text-sm outline-none focus:border-primary"
+                value={openTime}
+                onChange={(e) => setOpenTime(e.target.value)}
+              >
+                {TIME_OPTIONS.map((time) => (
+                  <option key={`open-${time}`} value={time}>{time}</option>
+                ))}
+              </select>
+            </label>
+            <label className="text-sm">
+              <span className="mb-1 block text-gray-600">Закрытие</span>
+              <select
+                className="w-full rounded-xl border px-4 py-2.5 text-sm outline-none focus:border-primary"
+                value={closeTime}
+                onChange={(e) => setCloseTime(e.target.value)}
+              >
+                {TIME_OPTIONS.map((time) => (
+                  <option key={`close-${time}`} value={time}>{time}</option>
+                ))}
+              </select>
+            </label>
           </div>
 
           <div className="mt-4">
             <p className="mb-2 text-sm font-semibold text-gray-700">Удобства</p>
             <div className="grid gap-2 md:grid-cols-3">
               {[
-                ["parking", "Парковка"],
-                ["locker", "Раздевалки"],
-                ["shower", "Душ"],
-                ["tribune", "Трибуны"],
-                ["lighting", "Освещение"],
-              ].map(([key, label]) => (
-                <label key={key} className="flex items-center gap-2 text-sm">
+                ["parking", "Парковка", "/assets/images/booking/parking.svg"],
+                ["locker", "Раздевалки", "/assets/images/booking/outfitChange.svg"],
+                ["shower", "Душ", "/assets/images/booking/shower.svg"],
+                ["tribune", "Трибуны", "/assets/images/booking/seats.svg"],
+                ["lighting", "Освещение", "/assets/images/booking/lighted.svg"],
+              ].map(([key, label, iconPath]) => (
+                <label key={key} className="flex items-center gap-2 rounded-lg border p-2 text-sm">
+                  <img src={iconPath} alt="" className="h-5 w-5" />
                   <input
                     type="checkbox"
                     className="accent-primary"
@@ -236,11 +329,28 @@ export default function AdminFieldsPage() {
               type="file"
               accept="image/*"
               multiple
-              onChange={(e) => setFiles(Array.from(e.target.files ?? []))}
+              onChange={(e) => {
+                const selected = Array.from(e.target.files ?? []);
+                setFiles(selected);
+                filePreviews.forEach((url) => URL.revokeObjectURL(url));
+                setFilePreviews(selected.map((file) => URL.createObjectURL(file)));
+              }}
               className="text-sm"
             />
             {files.length > 0 ? (
               <p className="mt-1 text-xs text-gray-500">Выбрано: {files.length}</p>
+            ) : null}
+            {filePreviews.length > 0 ? (
+              <div className="mt-2 grid grid-cols-3 gap-2 md:grid-cols-5">
+                {filePreviews.map((src, idx) => (
+                  <img
+                    key={`${src}-${idx}`}
+                    src={src}
+                    alt={`preview-${idx}`}
+                    className="h-20 w-full rounded-lg object-cover"
+                  />
+                ))}
+              </div>
             ) : null}
           </div>
           <div className="mt-4">
@@ -269,6 +379,7 @@ export default function AdminFieldsPage() {
                 <th className="px-4 py-3">Рейтинг</th>
                 <th className="px-4 py-3">Фото</th>
                 <th className="px-4 py-3">Добавлено</th>
+                <th className="px-4 py-3 text-right">Действия</th>
               </tr>
             </thead>
             <tbody>
@@ -288,11 +399,25 @@ export default function AdminFieldsPage() {
                   <td className="px-4 py-3 text-gray-500">
                     {new Date(f.createdAt).toLocaleDateString("ru-RU")}
                   </td>
+                  <td className="px-4 py-3 text-right">
+                    <button
+                      onClick={() => startEdit(f)}
+                      className="mr-3 text-gray-400 hover:text-primary"
+                    >
+                      <Pencil size={15} />
+                    </button>
+                    <button
+                      onClick={() => removeField(f.id)}
+                      className="text-gray-400 hover:text-red-500"
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  </td>
                 </tr>
               ))}
               {fields.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-gray-400">
+                  <td colSpan={8} className="px-4 py-8 text-center text-gray-400">
                     Нет стадионов. Добавьте первый стадион кнопкой выше.
                   </td>
                 </tr>
