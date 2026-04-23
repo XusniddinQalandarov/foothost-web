@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { api } from "@/lib/api";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -11,17 +12,18 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
-    setTimeout(() => {
+    try {
+      const { accessToken } = await api.login(phone, password);
+      localStorage.setItem('access_token', accessToken);
+      router.push('/home');
+    } catch {
+      alert('Неверный номер телефона или пароль');
+    } finally {
       setLoading(false);
-      if (phone === "user" && password === "user") {
-        router.push("/home");
-      } else {
-        alert('Неверные данные. Используйте логин "user" и пароль "user".');
-      }
-    }, 600);
+    }
   }
 
   return (
