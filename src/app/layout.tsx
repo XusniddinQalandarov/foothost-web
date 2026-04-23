@@ -48,7 +48,7 @@ export default function RootLayout({
       lang="ru"
       className={`${manrope.variable} ${artico.variable} ${bebas.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col bg-background text-text-primary">
+      <body suppressHydrationWarning className="min-h-full flex flex-col bg-background text-text-primary">
         {children}
       </body>
     </html>

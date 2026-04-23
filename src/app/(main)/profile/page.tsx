@@ -1,9 +1,62 @@
+"use client";
+
 import Image from "next/image";
 import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
 import { ChevronRight, Trophy } from "lucide-react";
 import { FaceitRatingBadge } from "@/components/FaceitRatingBadge";
+import { api } from "@/lib/api";
+import type { User } from "@/lib/types";
+
+const ROLE_LABELS: Record<string, string> = {
+  player: "Игрок",
+  field_owner: "Владелец поля",
+  both: "Игрок и владелец",
+  admin: "Администратор",
+};
 
 export default function ProfilePage() {
+  const [me, setMe] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let mounted = true;
+
+    api
+      .me()
+      .then((user) => {
+        if (!mounted) return;
+        setMe(user);
+      })
+      .catch(() => {
+        if (!mounted) return;
+        setMe(null);
+      })
+      .finally(() => {
+        if (!mounted) return;
+        setLoading(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const fullName = useMemo(() => {
+    if (!me) return "Профиль";
+    return [me.firstName, me.lastName].filter(Boolean).join(" ");
+  }, [me]);
+
+  const roleLabel = me ? ROLE_LABELS[me.role] ?? "Пользователь" : "Пользователь";
+  const locationLabel = me?.position?.trim() || "Локация не указана";
+  const avatarSrc = me?.avatarUrl?.trim() || "/assets/images/profile/stadium.svg";
+
+  const stats = [
+    { v: me ? String(me.rating) : "-", l: "Рейтинг" },
+    { v: me ? String(me.wins) : "-", l: "Победы" },
+    { v: me ? String(me.tournamentCount) : "-", l: "Турниры" },
+  ];
+
   return (
     <div>
       {/* Hero band — single accent color, no rainbow */}
@@ -15,7 +68,7 @@ export default function ProfilePage() {
             <div className="relative shrink-0">
               <div className="relative h-36 w-36 overflow-hidden rounded-3xl border border-white/10 shadow-2xl ring-1 ring-white/10 sm:h-40 sm:w-40">
                 <Image
-                  src="https://i.imgflip.com/1ur9b0.jpg"
+                  src={avatarSrc}
                   alt=""
                   fill
                   className="object-cover"
@@ -29,20 +82,16 @@ export default function ProfilePage() {
             </div>
             <div className="pb-1 text-white">
               <p className="font-artico text-[10px] font-bold uppercase tracking-[0.35em] text-white/45">
-                Игрок
+                {roleLabel}
               </p>
               <h1 className="font-artico mt-2 text-3xl font-bold uppercase tracking-tight sm:text-4xl">
-                Шукур Гайнутдинов
+                {fullName}
               </h1>
-              <p className="mt-2 text-sm font-medium text-white/55">Полупрофи · Ташкент</p>
+              <p className="mt-2 text-sm font-medium text-white/55">{locationLabel}</p>
             </div>
           </div>
           <div className="mt-10 grid max-w-md grid-cols-3 gap-3 border-t border-white/10 pt-8 lg:mt-0 lg:border-t-0 lg:pt-0">
-            {[
-              { v: "2.9k", l: "Рейтинг" },
-              { v: "58", l: "Матчи" },
-              { v: "7", l: "Турниры" },
-            ].map((x) => (
+            {stats.map((x) => (
               <div
                 key={x.l}
                 className="rounded-2xl border border-white/10 bg-white/[0.06] px-3 py-4 text-center backdrop-blur-sm"
@@ -56,6 +105,12 @@ export default function ProfilePage() {
           </div>
         </div>
       </section>
+
+      {loading && (
+        <div className="mx-auto mt-6 max-w-[1400px] px-4 text-sm text-text-secondary sm:px-6 lg:px-8">
+          Загружаем профиль...
+        </div>
+      )}
 
       <div className="mx-auto max-w-[1400px] px-4 py-12 sm:px-6 lg:px-8">
         <div className="grid gap-10 lg:grid-cols-12">

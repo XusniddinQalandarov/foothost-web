@@ -1,4 +1,4 @@
-import type { User, Field, Lobby, News, CreateNewsDto } from './types';
+import type { User, Field, Lobby, News, CreateNewsDto, CreateFieldDto } from './types';
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000';
 
@@ -46,6 +46,23 @@ export const api = {
 
   fields: {
     all: () => request<Field[]>('/fields'),
+    create: (dto: CreateFieldDto) =>
+      request<Field>('/fields', {
+        method: 'POST',
+        body: JSON.stringify(dto),
+      }),
+    uploadPhoto: async (id: string, file: File): Promise<Field> => {
+      const token = getToken();
+      const form = new FormData();
+      form.append('file', file);
+      const res = await fetch(`${BASE}/fields/${id}/photos`, {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: form,
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json();
+    },
   },
 
   lobbies: {

@@ -21,11 +21,31 @@ export interface Field {
   ownerId: string;
   name: string;
   address: string;
+  lat: number | null;
+  lng: number | null;
   pricePerHour: number;
   rating: number;
+  amenities: Record<string, boolean>;
   photos: string[];
   description: string | null;
+  pitchType: string | null;
+  dimensions: string | null;
+  workTime: string | null;
   createdAt: string;
+}
+
+export interface CreateFieldDto {
+  name: string;
+  address: string;
+  lat?: number;
+  lng?: number;
+  pricePerHour: number;
+  slotDuration: number;
+  amenities?: Record<string, boolean>;
+  description?: string;
+  pitchType?: string;
+  dimensions?: string;
+  workTime?: string;
 }
 
 export type LobbyStatus =
